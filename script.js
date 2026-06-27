@@ -1,18 +1,40 @@
 const App = (() => {
 "use strict";
 
-/* ================= HELPERS ================= */
-const normalizeDate = d => new Date(d).toISOString().slice(0,10);
+/* ========= HELPERS ========= */
 
-/* ================= STORE ================= */
+const normalizeDate = (d) => {
+  if (!d) return "";
+
+  if (typeof d === "number") {
+    const excelEpoch = new Date(1899, 11, 30);
+    const date = new Date(excelEpoch.getTime() + d * 86400000);
+    return date.toISOString().slice(0, 10);
+  }
+
+  const parsed = new Date(d);
+  if (isNaN(parsed)) return "";
+
+  return parsed.toISOString().slice(0, 10);
+};
+
+const escapeCSV = (value) =>
+  `"${String(value).replace(/"/g, '""')}"`;
+
+/* ========= STORE ========= */
+
 const Store = (() => {
   const KEY = "finance_saas";
 
   let state = { transactions: [] };
 
   const load = () => {
-    const data = localStorage.getItem(KEY);
-    if (data) state = JSON.parse(data);
+    try {
+      const data = localStorage.getItem(KEY);
+      if (data) state = JSON.parse(data);
+    } catch {
+      state = { transactions: [] };
+    }
   };
 
   const save = () => {
@@ -31,10 +53,11 @@ const Store = (() => {
 
   const get = () => state.transactions;
 
-  return { load, save, add, set, get };
+  return { load, add, set, get };
 })();
 
-/* ================= SERVICES ================= */
+/* ========= SERVICES ========= */
+
 const Services = (() => {
 
   const filter = () => {
@@ -56,6 +79,7 @@ const Services = (() => {
 
     filter().forEach(t => {
       cat[t.category] = (cat[t.category] || 0) + t.amount;
+
       const m = t.date.slice(0,7);
       month[m] = (month[m] || 0) + t.amount;
     });
@@ -67,7 +91,12 @@ const Services = (() => {
     const header = "Descrição,Valor,Categoria,Data\n";
 
     const csv = header + Store.get().map(r =>
-      `${r.description},${r.amount},${r.category},${r.date}`
+      [
+        escapeCSV(r.description),
+        r.amount,
+        escapeCSV(r.category),
+        r.date
+      ].join(",")
     ).join("\n");
 
     const blob = new Blob([csv], { type:"text/csv" });
@@ -83,25 +112,32 @@ const Services = (() => {
     const reader = new FileReader();
 
     reader.onload = e => {
-      const wb = XLSX.read(e.target.result, { type:"array" });
-      const sheet = wb.Sheets[wb.SheetNames[0]];
-      const json = XLSX.utils.sheet_to_json(sheet);
+      try {
+        const wb = XLSX.read(e.target.result, { type:"array" });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(sheet);
 
-      const data = json.map(r => {
-        if (!r.Descrição || !r.Valor || !r.Data) return null;
+        const data = json.map(r => {
+          if (!r.Descrição || !r.Valor || !r.Data) return null;
 
-        return {
-          id: Date.now() + Math.random(),
-          description: String(r.Descrição),
-          amount: Number(r.Valor),
-          category: String(r.Categoria || "outros").toLowerCase(),
-          date: normalizeDate(r.Data)
-        };
-      }).filter(Boolean);
+          return {
+            id: crypto.randomUUID(),
+            description: String(r.Descrição),
+            amount: Number(r.Valor),
+            category: String(r.Categoria || "outros").toLowerCase(),
+            date: normalizeDate(r.Data)
+          };
+        }).filter(Boolean);
 
-      Store.set(data);
-      UI.render();
+        Store.set(data);
+        UI.render();
+
+      } catch {
+        alert("Erro ao processar arquivo");
+      }
     };
+
+    reader.onerror = () => alert("Erro ao ler arquivo");
 
     reader.readAsArrayBuffer(file);
   };
@@ -109,10 +145,12 @@ const Services = (() => {
   return { filter, analytics, exportCSV, importExcel };
 })();
 
-/* ================= UI ================= */
+/* ========= UI ========= */
+
 const UI = (() => {
 
-  const format = v => v.toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+  const format = v =>
+    v.toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
 
   const renderList = () => {
     const list = document.getElementById("list");
@@ -126,7 +164,9 @@ const UI = (() => {
   };
 
   const renderBalance = () => {
-    const total = Services.filter().reduce((a,b)=>a+b.amount,0);
+    const total = Services.filter()
+      .reduce((a,b)=>a+b.amount,0);
+
     document.getElementById("balance").textContent = format(total);
   };
 
@@ -149,7 +189,8 @@ const UI = (() => {
   };
 })();
 
-/* ================= CHARTS ================= */
+/* ========= CHARTS ========= */
+
 const Charts = (() => {
 
   let catChart, monthChart;
@@ -157,36 +198,39 @@ const Charts = (() => {
   const render = () => {
     const {cat, month} = Services.analytics();
 
+    const catCanvas = document.getElementById("catChart");
+    const monthCanvas = document.getElementById("monthChart");
+
+    if (!catCanvas || !monthCanvas) return;
+
     if (catChart) catChart.destroy();
     if (monthChart) monthChart.destroy();
 
-    catChart = new Chart(
-      document.getElementById("catChart").getContext("2d"),
-      {
-        type:"pie",
-        data:{
-          labels:Object.keys(cat),
-          datasets:[{data:Object.values(cat)}]
-        }
-      }
-    );
+    const safeCat = Object.keys(cat).length ? cat : { "Sem dados": 1 };
+    const safeMonth = Object.keys(month).length ? month : { "Sem dados": 1 };
 
-    monthChart = new Chart(
-      document.getElementById("monthChart").getContext("2d"),
-      {
-        type:"bar",
-        data:{
-          labels:Object.keys(month),
-          datasets:[{data:Object.values(month)}]
-        }
+    catChart = new Chart(catCanvas.getContext("2d"), {
+      type:"pie",
+      data:{
+        labels:Object.keys(safeCat),
+        datasets:[{data:Object.values(safeCat)}]
       }
-    );
+    });
+
+    monthChart = new Chart(monthCanvas.getContext("2d"), {
+      type:"bar",
+      data:{
+        labels:Object.keys(safeMonth),
+        datasets:[{data:Object.values(safeMonth)}]
+      }
+    });
   };
 
   return { render };
 })();
 
-/* ================= CONTROLLER ================= */
+/* ========= CONTROLLER ========= */
+
 const Controller = (() => {
 
   const init = () => {
@@ -198,12 +242,17 @@ const Controller = (() => {
 
     document.getElementById("add").onclick = () => {
 
-      if (!descEl.value || !amountEl.value || !dateEl.value) return;
+      const amount = Number(amountEl.value);
+
+      if (!descEl.value || !dateEl.value || isNaN(amount)) {
+        alert("Preencha corretamente os campos");
+        return;
+      }
 
       Store.add({
-        id: Date.now(),
+        id: crypto.randomUUID(),
         description: descEl.value.trim(),
-        amount: Number(amountEl.value),
+        amount,
         category: categoryEl.value.trim().toLowerCase() || "outros",
         date: normalizeDate(dateEl.value)
       });
@@ -229,8 +278,11 @@ const Controller = (() => {
       );
 
     document.getElementById("themeToggle").onclick = () => {
-      const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+      const isDark =
+        document.documentElement.getAttribute("data-theme") === "dark";
+
       const newTheme = isDark ? "light" : "dark";
+
       document.documentElement.setAttribute("data-theme", newTheme);
       localStorage.setItem("theme", newTheme);
     };
@@ -239,7 +291,8 @@ const Controller = (() => {
   return { init };
 })();
 
-/* ================= INIT ================= */
+/* ========= INIT ========= */
+
 const init = () => {
   Store.load();
 
