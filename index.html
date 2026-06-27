@@ -1,51 +1,53 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Smart Finance Dashboard</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Finance SaaS</title>
 
-  <!-- Chart.js CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
-  <!-- Font Awesome -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
-
-  <link rel="stylesheet" href="style.css"/>
+<link rel="stylesheet" href="style.css">
 </head>
 
 <body>
-  <header class="header">
-    <h1>Finance Dashboard</h1>
-    <button id="themeToggle" aria-label="Alternar tema">
-      <i class="fas fa-moon"></i>
-    </button>
-  </header>
 
-  <main class="container">
-    <section class="balance">
-      <h2>Saldo Atual</h2>
-      <p id="balance">R$ 0,00</p>
-    </section>
+<header>
+  <h1>Finance SaaS</h1>
+  <button id="themeToggle">🌙</button>
+</header>
 
-    <section class="form-section">
-      <form id="transactionForm">
-        <input type="text" id="description" placeholder="Descrição" required/>
-        <input type="number" id="amount" placeholder="Valor (use negativo para despesa)" required/>
-        <button type="submit">Adicionar</button>
-      </form>
-    </section>
+<main class="container">
 
-    <section class="chart-section">
-      <canvas id="financeChart"></canvas>
-    </section>
+<section class="filters">
+  <input type="date" id="startDate">
+  <input type="date" id="endDate">
+  <select id="categoryFilter"></select>
+</section>
 
-    <section class="list-section">
-      <h3>Transações</h3>
-      <ul id="transactionList"></ul>
-    </section>
-  </main>
+<section class="form">
+  <input id="desc" placeholder="Descrição">
+  <input id="amount" type="number" placeholder="Valor">
+  <input id="date" type="date">
+  <input id="category" placeholder="Categoria">
+  <button id="add">Adicionar</button>
+</section>
 
-  <script src="script.js"></script>
+<section class="actions">
+  <button id="export">Export CSV</button>
+  <input type="file" id="import">
+</section>
+
+<h2 id="balance"></h2>
+
+<ul id="list"></ul>
+
+<canvas id="catChart"></canvas>
+<canvas id="monthChart"></canvas>
+
+</main>
+
+<script src="script.js"></script>
 </body>
 </html>
