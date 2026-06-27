@@ -1,150 +1,225 @@
-(() => {
-  "use strict";
+const App = (() => {
+"use strict";
 
-  const STORAGE_KEY = "financeData";
+/* ================= STORE ================= */
+const Store = (() => {
+  const KEY = "finance_saas";
 
   let state = {
-    transactions: []
+    transactions:[]
   };
 
-  let chart;
-
-  const elements = {
-    form: document.getElementById("transactionForm"),
-    description: document.getElementById("description"),
-    amount: document.getElementById("amount"),
-    list: document.getElementById("transactionList"),
-    balance: document.getElementById("balance"),
-    themeToggle: document.getElementById("themeToggle")
+  const load = () => {
+    const data = localStorage.getItem(KEY);
+    if(data) state = JSON.parse(data);
   };
 
-  const saveState = () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  const save = () => {
+    localStorage.setItem(KEY, JSON.stringify(state));
   };
 
-  const loadState = () => {
-    const data = localStorage.getItem(STORAGE_KEY);
-    if (data) state = JSON.parse(data);
+  const add = (t) => {
+    state.transactions.push(t);
+    save();
   };
 
-  const formatCurrency = (value) =>
-    value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const set = (data) => {
+    state.transactions = data;
+    save();
+  };
 
-  const calculateBalance = () =>
-    state.transactions.reduce((acc, t) => acc + t.amount, 0);
+  const get = () => state.transactions;
 
-  const addTransaction = (description, amount) => {
-    const transaction = {
-      id: Date.now(),
-      description,
-      amount: Number(amount)
+  return { load, save, add, set, get };
+})();
+
+/* ================= SERVICES ================= */
+const Services = (() => {
+
+  const filter = () => {
+    const start = document.getElementById("startDate").value;
+    const end = document.getElementById("endDate").value;
+    const cat = document.getElementById("categoryFilter").value;
+
+    return Store.get().filter(t => {
+      return (!start || t.date >= start)
+        && (!end || t.date <= end)
+        && (!cat || t.category === cat);
+    });
+  };
+
+  const analytics = () => {
+    const cat = {};
+    const month = {};
+
+    filter().forEach(t => {
+      cat[t.category] = (cat[t.category] || 0) + t.amount;
+
+      const m = t.date.slice(0,7);
+      month[m] = (month[m] || 0) + t.amount;
+    });
+
+    return { cat, month };
+  };
+
+  const exportCSV = () => {
+    const rows = Store.get();
+
+    const csv = rows.map(r =>
+      `${r.description},${r.amount},${r.category},${r.date}`
+    ).join("\n");
+
+    const blob = new Blob([csv]);
+    const a = document.createElement("a");
+
+    a.href = URL.createObjectURL(blob);
+    a.download = "data.csv";
+    a.click();
+  };
+
+  const importExcel = (file) => {
+    const reader = new FileReader();
+
+    reader.onload = e => {
+      const wb = XLSX.read(e.target.result, { type:"array" });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(sheet);
+
+      const data = json.map(r => ({
+        id: Date.now()+Math.random(),
+        description: r.Descrição,
+        amount: Number(r.Valor),
+        category: r.Categoria,
+        date: r.Data
+      }));
+
+      Store.set(data);
+      UI.render();
     };
 
-    state.transactions.push(transaction);
-    saveState();
-    render();
+    reader.readAsArrayBuffer(file);
   };
 
-  const deleteTransaction = (id) => {
-    state.transactions = state.transactions.filter(t => t.id !== id);
-    saveState();
-    render();
-  };
+  return { filter, analytics, exportCSV, importExcel };
+})();
+
+/* ================= UI ================= */
+const UI = (() => {
+
+  const format = v => v.toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
 
   const renderList = () => {
-    elements.list.innerHTML = "";
+    const list = document.getElementById("list");
+    list.innerHTML = "";
 
-    state.transactions.forEach(({ id, description, amount }) => {
+    Services.filter().forEach(t => {
       const li = document.createElement("li");
-
-      li.innerHTML = `
-        <span>${description}</span>
-        <span class="${amount >= 0 ? "income" : "expense"}">
-          ${formatCurrency(amount)}
-        </span>
-      `;
-
-      li.addEventListener("click", () => deleteTransaction(id));
-
-      elements.list.appendChild(li);
+      li.textContent = `${t.description} - ${format(t.amount)}`;
+      list.appendChild(li);
     });
   };
 
   const renderBalance = () => {
-    const balance = calculateBalance();
-    elements.balance.textContent = formatCurrency(balance);
+    const total = Services.filter()
+      .reduce((a,b)=>a+b.amount,0);
+
+    document.getElementById("balance").textContent = format(total);
   };
 
-  const renderChart = () => {
-    const income = state.transactions
-      .filter(t => t.amount > 0)
-      .reduce((acc, t) => acc + t.amount, 0);
+  const renderCategories = () => {
+    const select = document.getElementById("categoryFilter");
+    const cats = [...new Set(Store.get().map(t=>t.category))];
 
-    const expense = state.transactions
-      .filter(t => t.amount < 0)
-      .reduce((acc, t) => acc + t.amount, 0);
+    select.innerHTML = `<option value="">Todas</option>` +
+      cats.map(c=>`<option>${c}</option>`).join("");
+  };
 
-    if (chart) chart.destroy();
+  return {
+    render: () => {
+      renderList();
+      renderBalance();
+      renderCategories();
+      Charts.render();
+    }
+  };
+})();
 
-    const ctx = document.getElementById("financeChart").getContext("2d");
+/* ================= CHARTS ================= */
+const Charts = (() => {
 
-    chart = new Chart(ctx, {
-      type: "doughnut",
-      data: {
-        labels: ["Receitas", "Despesas"],
-        datasets: [{
-          data: [income, Math.abs(expense)],
-          backgroundColor: ["#4CAF50", "#e74c3c"]
-        }]
+  let catChart, monthChart;
+
+  const render = () => {
+    const {cat, month} = Services.analytics();
+
+    if(catChart) catChart.destroy();
+    if(monthChart) monthChart.destroy();
+
+    catChart = new Chart(document.getElementById("catChart"), {
+      type:"pie",
+      data:{
+        labels:Object.keys(cat),
+        datasets:[{data:Object.values(cat)}]
+      }
+    });
+
+    monthChart = new Chart(document.getElementById("monthChart"), {
+      type:"bar",
+      data:{
+        labels:Object.keys(month),
+        datasets:[{data:Object.values(month)}]
       }
     });
   };
 
-  const render = () => {
-    renderList();
-    renderBalance();
-    renderChart();
-  };
+  return { render };
+})();
 
-  const toggleTheme = () => {
-    const isDark = document.documentElement.getAttribute("data-theme") === "dark";
-    document.documentElement.setAttribute("data-theme", isDark ? "light" : "dark");
-    localStorage.setItem("theme", isDark ? "light" : "dark");
-  };
-
-  const loadTheme = () => {
-    const saved = localStorage.getItem("theme");
-    if (saved) {
-      document.documentElement.setAttribute("data-theme", saved);
-    } else {
-      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      document.documentElement.setAttribute("data-theme", prefersDark ? "dark" : "light");
-    }
-  };
-
-  const initEvents = () => {
-    elements.form.addEventListener("submit", (e) => {
-      e.preventDefault();
-
-      const desc = elements.description.value.trim();
-      const amount = elements.amount.value;
-
-      if (!desc || !amount) return;
-
-      addTransaction(desc, amount);
-
-      elements.form.reset();
-    });
-
-    elements.themeToggle.addEventListener("click", toggleTheme);
-  };
+/* ================= CONTROLLER ================= */
+const Controller = (() => {
 
   const init = () => {
-    loadState();
-    loadTheme();
-    initEvents();
-    render();
+
+    document.getElementById("add").onclick = () => {
+      Store.add({
+        id:Date.now(),
+        description:desc.value,
+        amount:Number(amount.value),
+        category:category.value,
+        date:date.value
+      });
+
+      UI.render();
+    };
+
+    document.getElementById("export").onclick = Services.exportCSV;
+
+    document.getElementById("import").onchange = e =>
+      Services.importExcel(e.target.files[0]);
+
+    ["startDate","endDate","categoryFilter"]
+      .forEach(id =>
+        document.getElementById(id).onchange = UI.render
+      );
+
+    document.getElementById("themeToggle").onclick = () => {
+      const dark = document.documentElement.getAttribute("data-theme")==="dark";
+      document.documentElement.setAttribute("data-theme", dark?"light":"dark");
+    };
   };
 
-  init();
+  return { init };
 })();
+
+/* ================= INIT ================= */
+const init = () => {
+  Store.load();
+  Controller.init();
+  UI.render();
+};
+
+return { init };
+
+})();
+
+App.init();
