@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Smart Finance Dashboard</title>
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+
+  <link rel="stylesheet" href="style.css"/>
+</head>
+
+<body>
+  <header class="header">
+    <h1>Finance Dashboard</h1>
+    <button id="themeToggle" aria-label="Alternar tema">
+      <i class="fas fa-moon"></i>
+    </button>
+  </header>
+
+  <main class="container">
+    <section class="balance">
+      <h2>Saldo Atual</h2>
+      <p id="balance">R$ 0,00</p>
+    </section>
+
+    <section class="form-section">
+      <form id="transactionForm">
+        <input type="text" id="description" placeholder="Descrição" required/>
+        <input type="number" id="amount" placeholder="Valor (use negativo para despesa)" required/>
+        <button type="submit">Adicionar</button>
+      </form>
+    </section>
+
+    <section class="chart-section">
+      <canvas id="financeChart"></canvas>
+    </section>
+
+    <section class="list-section">
+      <h3>Transações</h3>
+      <ul id="transactionList"></ul>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
