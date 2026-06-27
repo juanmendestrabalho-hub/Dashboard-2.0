@@ -1,6 +1,7 @@
 :root {
   --bg:#ffffff;
   --text:#222;
+  --primary:#4CAF50;
 }
 
 [data-theme="dark"] {
@@ -19,7 +20,7 @@ header {
   display:flex;
   justify-content:space-between;
   padding:1rem;
-  background:#4CAF50;
+  background:var(--primary);
   color:white;
 }
 
@@ -44,7 +45,7 @@ input, button, select {
 
 button {
   cursor:pointer;
-  background:#4CAF50;
+  background:var(--primary);
   color:white;
 }
 
